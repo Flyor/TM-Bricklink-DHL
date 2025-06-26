@@ -10,6 +10,9 @@
 // @grant        GM_setClipboard
 // @grant        GM_getClipboard
 // @grant        GM_registerMenuCommand
+// @updateURL    https://raw.githubusercontent.com/Flyor/TM-Bricklink-DHL/main/tampermonkey-bricklink-dhl.user.js
+// @downloadURL  https://raw.githubusercontent.com/Flyor/TM-Bricklink-DHL/main/tampermonkey-bricklink-dhl.user.js
+// @supportURL   https://github.com/Flyor/TM-Bricklink-DHL
 // ==/UserScript==
 
 /*
