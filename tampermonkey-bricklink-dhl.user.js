@@ -1,0 +1,227 @@
+// ==UserScript==
+// @name         Bricklink → DHL Geschäftskundenportal Kopierer
+// @namespace    https://yourdomain.example/
+// @version      1.2.0
+// @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und fügt sie im DHL Geschäftskundenportal ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
+// @author       Dein Name
+// @match        https://www.bricklink.com/orderDetail.asp*
+// @match        https://geschaeftskunden.dhl.de/vls/vc/ShipmentDetails*
+// @icon         https://www.bricklink.com/favicon.ico
+// @grant        GM_setClipboard
+// @grant        GM_getClipboard
+// @grant        GM_registerMenuCommand
+// ==/UserScript==
+
+/*
+Changelog v1.2.0 (2024-06-27)
+
+- Gewichtsermittlung komplett überarbeitet:
+  - 35g Verpackungspuffer werden automatisch zum ermittelten Gewicht addiert.
+  - Das Gesamtgewicht wird auf das nächste volle 100g aufgerundet (z.B. 53g+35g=88g → 100g, 224g+35g=259g → 300g).
+  - Umrechnung in kg mit nur einer Nachkommastelle, Komma als Dezimaltrennzeichen (z.B. 0,1 / 0,3 / 1,2).
+  - Mindestgewicht ist immer 0,1 kg, auch bei sehr leichten Sendungen.
+- Adress-Parsing robust gegen beliebige Zeilenzahl im Adressblock (Name2/Name3 werden nur befüllt, wenn wirklich vorhanden).
+- Alle Felder werden gezielt und kompatibel für das DHL Geschäftskundenportal ausgefüllt.
+- Debug-Logging für die wichtigsten Schritte und Fehlerquellen.
+- Das Skript ist damit für alle gängigen Bricklink-Bestellseiten und DHL-Formate (Stand 2024-06) optimiert.
+
+*/
+
+(function() {
+    'use strict';
+
+    // Hilfsfunktionen
+    function createButton(text, onClick, id = '') {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.type = 'button';
+        btn.style = 'z-index:9999;position:fixed;top:10px;right:10px;padding:8px 16px;background:#e30613;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.2);';
+        if (id) btn.id = id;
+        btn.addEventListener('click', onClick);
+        document.body.appendChild(btn);
+        return btn;
+    }
+
+    // Clipboard-Helper
+    async function setClipboard(text) {
+        if (typeof GM_setClipboard === 'function') {
+            try { GM_setClipboard(text, {type: 'text'}); return true; } catch(e) {}
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try { await navigator.clipboard.writeText(text); return true; } catch(e) {}
+        }
+        alert('Konnte nicht in die Zwischenablage schreiben!');
+        return false;
+    }
+    async function getClipboard() {
+        if (typeof GM_getClipboard === 'function') {
+            try { return await GM_getClipboard({type: 'text'}); } catch(e) {}
+        }
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            try { return await navigator.clipboard.readText(); } catch(e) {}
+        }
+        alert('Konnte nicht aus der Zwischenablage lesen!');
+        return '';
+    }
+
+    // Seite: Bricklink Bestelldetail
+    if (window.location.hostname.includes('bricklink.com')) {
+        // Button einfügen
+        createButton('Daten für DHL kopieren', async () => {
+            const data = {};
+            // --- Order ID ---
+            // Suche nach Link "Contact your buyer about this order"
+            const buyerContact = Array.from(document.querySelectorAll('a[href*="contact.asp?orderID="]')).find(a => a.textContent.includes('Contact your buyer'));
+            if (buyerContact) {
+                const match = buyerContact.href.match(/orderID=(\d+)/);
+                data.orderId = match ? match[1] : '';
+            } else {
+                data.orderId = '';
+            }
+            // --- Käuferadresse ---
+            // Suche nach <b>Buyer Information</b>
+            let buyerName = '', buyerName2 = '', buyerName3 = '', buyerStreet = '', buyerStreetNumber = '', buyerPlz = '', buyerCity = '', buyerCountry = '', buyerEmail = '';
+            const buyerInfoHeader = Array.from(document.querySelectorAll('b')).find(b => b.textContent.trim() === 'Buyer Information');
+            let buyerTables = [];
+            if (buyerInfoHeader) {
+                // Alle folgenden Tabellen im DOM suchen (nicht nur direkte Geschwister)
+                let el = buyerInfoHeader;
+                while (el = el.nextElementSibling) {
+                    if (el.tagName === 'TABLE') buyerTables.push(el);
+                    if (el.tagName === 'B' && el.textContent.includes('Seller Information')) break;
+                }
+            }
+            const buyerTable = buyerTables[1]; // zweite Tabelle
+            if (buyerTable) {
+                const tds = buyerTable.querySelectorAll('td');
+                // E-Mail
+                const emailTd = Array.from(tds).find(td => td.textContent.includes('E-Mail:'));
+                if (emailTd && emailTd.nextElementSibling) {
+                    const mailLink = emailTd.nextElementSibling.querySelector('a[href^="mailto:"]');
+                    if (mailLink) buyerEmail = mailLink.textContent.trim();
+                }
+                // Name & Address
+                const addrTd = Array.from(tds).find(td => td.textContent.includes('Name & Address:'));
+                if (addrTd && addrTd.nextElementSibling) {
+                    const lines = addrTd.nextElementSibling.innerHTML.split('<br>').map(l => l.replace(/<[^>]+>/g, '').trim()).filter(Boolean);
+                    buyerName = lines[0] || '';
+                    // Name2/Name3 nur, wenn mehr als 4 Zeilen vorhanden sind
+                    if (lines.length > 4) buyerName2 = lines[1] || '';
+                    if (lines.length > 5) buyerName3 = lines[2] || '';
+                    // Straße und Hausnummer (immer drittletzte Zeile)
+                    const streetLine = lines[lines.length - 3] || '';
+                    const streetMatch = streetLine.match(/^(.*)\s+(\d+.*)$/);
+                    buyerStreet = streetMatch ? streetMatch[1] : streetLine;
+                    buyerStreetNumber = streetMatch ? streetMatch[2] : '';
+                    // PLZ und Ort (vorletzte Zeile)
+                    const plzOrt = lines[lines.length - 2]?.match(/(\d{4,5})\s+(.+)/);
+                    buyerPlz = plzOrt ? plzOrt[1] : '';
+                    buyerCity = plzOrt ? plzOrt[2] : '';
+                    // Land (letzte Zeile)
+                    buyerCountry = lines[lines.length - 1] || '';
+                }
+            } else {
+                console.warn('[Bricklink] Käufer-Tabelle (zweite nach "Buyer Information") nicht gefunden!');
+            }
+            data.name = buyerName;
+            data.name2 = buyerName2;
+            data.name3 = buyerName3;
+            data.street = buyerStreet;
+            data.streetNumber = buyerStreetNumber;
+            data.plz = buyerPlz;
+            data.city = buyerCity;
+            data.country = buyerCountry;
+            data.email = buyerEmail;
+            // --- Gewicht ---
+            // Suche nach "Estimated Weight of Order: ... g" oder "Total Weight: ... g"
+            let weight_g = '';
+            let weightMatch = document.body.innerHTML.match(/Estimated Weight of Order:[^\d]*(\d+[\.,]?\d*)g/);
+            if (!weightMatch) weightMatch = document.body.innerHTML.match(/Total Weight:[^\d]*(\d+[\.,]?\d*)g/);
+            if (weightMatch) {
+                weight_g = weightMatch[1].replace(',', '.');
+            } else {
+                // Suche gezielt nach <font class='fv'>Estimated Weight of Order:</font> und folgendem <font class='fv'>...g</font>
+                const fonts = Array.from(document.querySelectorAll('font.fv'));
+                for (let i = 0; i < fonts.length; i++) {
+                    if (fonts[i].textContent.trim() === 'Estimated Weight of Order:') {
+                        // Suche im nächsten <font> nach "g"
+                        let next = fonts[i].parentElement;
+                        while (next && next !== document.body) {
+                            // Suche nach <font class='fv'>...g</font>
+                            const gFont = next.querySelector && next.querySelector('font.fv');
+                            if (gFont && /g$/.test(gFont.textContent.trim())) {
+                                const gMatch = gFont.textContent.trim().match(/(\d+[\.,]?\d*)g$/);
+                                if (gMatch) {
+                                    weight_g = gMatch[1].replace(',', '.');
+                                    break;
+                                }
+                            }
+                            next = next.nextElementSibling;
+                        }
+                        if (weight_g) break;
+                    }
+                }
+            }
+            data.weight_g = weight_g;
+            // --- Hinweise (z.B. z.Hd. ...) ---
+            const infoBlock = Array.from(document.querySelectorAll('td')).find(td => td.innerText.includes('Additional Information'));
+            data.info = infoBlock ? infoBlock.nextElementSibling.innerText.trim() : '';
+            // In Zwischenablage kopieren (JSON)
+            const ok = await setClipboard(JSON.stringify(data));
+            if (ok) alert('Daten für DHL kopiert!');
+        }, 'bricklink-dhl-copy-btn');
+    }
+
+    // Seite: DHL Geschäftskundenportal
+    if (window.location.hostname.includes('geschaeftskunden.dhl.de')) {
+        createButton('Daten aus Bricklink einfügen', async () => {
+            let dataRaw = await getClipboard();
+            let data;
+            try {
+                data = JSON.parse(dataRaw);
+            } catch (e) {
+                alert('Keine gültigen Bricklink-Daten in der Zwischenablage gefunden!');
+                return;
+            }
+            // Zuordnung Bricklink → DHL
+            function setValue(id, value) {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.focus();
+                    // Property-Setter (für React/Angular)
+                    const proto = Object.getPrototypeOf(el);
+                    const valueSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                    if (valueSetter) valueSetter.call(el, value);
+                    else el.value = value;
+                    el.dispatchEvent(new Event('input', {bubbles:true}));
+                    el.dispatchEvent(new Event('change', {bubbles:true}));
+                    el.dispatchEvent(new Event('blur', {bubbles:true}));
+                    // Logging für Debugging
+                    console.log(`[DHL-Feld] ${id} gesetzt auf:`, value);
+                } else {
+                    console.warn(`[DHL-Feld] Feld mit id='${id}' nicht gefunden!`);
+                }
+            }
+            setValue('shipment-reference', data.orderId || '');
+            setValue('receiver.name1', data.name || '');
+            setValue('receiver.name2', data.name2 || data.info || '');
+            setValue('receiver.name3', data.name3 || '');
+            setValue('receiver.street', data.street || '');
+            setValue('receiver.streetNumber', data.streetNumber || '');
+            setValue('receiver.plz', data.plz || '');
+            setValue('receiver.city', data.city || '');
+            setValue('receiver-country', data.country || '');
+            setValue('receiver.email', data.email || '');
+            // Gewicht: g → kg
+            let kg = '';
+            if (data.weight_g) {
+                let raw = parseFloat(data.weight_g.replace(',', '.')) + 35; // 35g Karton
+                let rounded = Math.ceil(raw / 100) * 100; // auf nächstes 100g aufrunden
+                let num = Math.max(rounded / 1000, 0.1); // in kg, mindestens 0,1
+                kg = num.toFixed(1).replace('.', ',');
+            }
+            setValue('shipment-weight', kg);
+            alert('Daten eingefügt! Bitte prüfe die Felder.');
+        }, 'dhl-bricklink-paste-btn');
+    }
+})();
