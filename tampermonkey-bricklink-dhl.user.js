@@ -1,10 +1,12 @@
 // ==UserScript==
-// @name         Bricklink → DHL & Iloxx Versanddienstleister Kopierer
+// @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.3.0
-// @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
+// @version      1.4.1
+// @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
+// @match        https://sellercentral.amazon.de/orders-v3/order/*
+// @match        https://sellercentral.amazon.*/orders-v3/order/*
 // @match        https://geschaeftskunden.dhl.de/vls/vc/ShipmentDetails*
 // @match        https://geschaeftskunden.dhl.de/vls/vc/printByToken/SHIPMENT_LABEL*
 // @match        https://www.iloxx.de/sendnow/ppvmanualorder.aspx*
@@ -18,6 +20,20 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.1 (2025-01-XX)
+
+- Amazon-Anpassungen:
+  - Telefonnummer wird nicht mehr aus Amazon kopiert
+  - E-Mail-Adresse bei Amazon-Bestellungen wird auf "Paket@Stonehiller.de" gesetzt
+
+Changelog v1.4.0 (2025-01-XX)
+
+- Amazon Seller Central-Unterstützung hinzugefügt:
+  - Button auf Amazon-Bestellseiten zum Kopieren der Versanddaten
+  - Extrahiert Lieferadresse und Bestellnummer aus Amazon
+  - Kompatibel mit bestehender DHL/Iloxx-Integration
+  - Bestellnummer wird aus URL oder DOM extrahiert
+
 Changelog v1.3.0 (2024-12-08)
 
 - Iloxx-Unterstützung hinzugefügt:
@@ -75,6 +91,110 @@ Changelog v1.2.0 (2024-06-27)
         }
         alert('Konnte nicht aus der Zwischenablage lesen!');
         return '';
+    }
+
+    // Seite: Amazon Seller Central Bestelldetail
+    if (window.location.hostname.includes('sellercentral.amazon') && window.location.pathname.includes('/orders-v3/order/')) {
+        createButton('Daten für Label kopieren', async () => {
+            const data = {};
+            
+            // --- Order ID ---
+            // Aus URL extrahieren: /orders-v3/order/303-6154361-9000313
+            const urlMatch = window.location.pathname.match(/\/order\/([^\/]+)/);
+            if (urlMatch) {
+                data.orderId = urlMatch[1];
+            } else {
+                // Fallback: Aus DOM extrahieren
+                const orderIdEl = document.querySelector('[data-test-id="order-id-value"]');
+                if (orderIdEl) {
+                    data.orderId = orderIdEl.textContent.trim();
+                } else {
+                    data.orderId = '';
+                }
+            }
+            
+            // --- Lieferadresse ---
+            const addressDiv = document.querySelector('[data-test-id="shipping-section-buyer-address"]');
+            let buyerName = '', buyerStreet = '', buyerStreetNumber = '', buyerPlz = '', buyerCity = '', buyerCountry = '';
+            
+            if (addressDiv) {
+                // Erstelle ein temporäres Element, um die Adresse sauber zu parsen
+                // Ersetze <br> Tags durch Zeilenumbrüche und extrahiere dann die Zeilen
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = addressDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+                const fullText = tempDiv.textContent || tempDiv.innerText;
+                
+                // Zeilen extrahieren und bereinigen
+                const lines = fullText
+                    .split('\n')
+                    .map(line => line.replace(/\s+/g, ' ').trim())
+                    .filter(line => line.length > 0);
+                
+                console.debug('[Amazon] Extrahierte Adresszeilen:', lines);
+                
+                if (lines.length > 0) {
+                    buyerName = lines[0] || '';
+                    
+                    if (lines.length > 1) {
+                        // Straße und Hausnummer (zweite Zeile)
+                        const streetLine = lines[1];
+                        // Versuche Straße und Hausnummer zu trennen (Hausnummer beginnt mit Zahl)
+                        const streetMatch = streetLine.match(/^(.*?)\s+(\d+[a-zA-Z0-9\s\-/]*)$/);
+                        if (streetMatch) {
+                            buyerStreet = streetMatch[1].trim();
+                            buyerStreetNumber = streetMatch[2].trim();
+                        } else {
+                            // Falls keine Hausnummer gefunden, gesamte Zeile als Straße
+                            buyerStreet = streetLine;
+                        }
+                    }
+                    
+                    if (lines.length > 2) {
+                        // PLZ (dritte Zeile) - sollte nur Zahlen enthalten
+                        buyerPlz = lines[2].replace(/\D/g, '').trim();
+                    }
+                    
+                    if (lines.length > 3) {
+                        // Stadt (vierte Zeile, kann Komma enthalten)
+                        buyerCity = lines[3].replace(/,/g, '').trim();
+                    }
+                    
+                    if (lines.length > 4) {
+                        // Land (fünfte Zeile)
+                        buyerCountry = lines[4].trim();
+                    }
+                }
+                
+                console.debug('[Amazon] Geparste Adressdaten:', {
+                    name: buyerName,
+                    street: buyerStreet,
+                    streetNumber: buyerStreetNumber,
+                    plz: buyerPlz,
+                    city: buyerCity,
+                    country: buyerCountry
+                });
+            } else {
+                console.warn('[Amazon] Lieferadresse nicht gefunden!');
+            }
+            
+            // --- E-Mail (fest für Amazon-Bestellungen) ---
+            const buyerEmail = 'Paket@Stonehiller.de';
+            
+            data.name = buyerName;
+            data.name2 = '';
+            data.name3 = '';
+            data.street = buyerStreet;
+            data.streetNumber = buyerStreetNumber;
+            data.plz = buyerPlz;
+            data.city = buyerCity;
+            data.country = buyerCountry;
+            data.email = buyerEmail;
+            data.weight_g = ''; // Amazon liefert kein Gewicht auf der Bestellseite
+            
+            // In Zwischenablage kopieren (JSON)
+            const ok = await setClipboard(JSON.stringify(data));
+            if (ok) alert('Amazon-Daten für Versanddienstleister kopiert!');
+        }, 'amazon-dhl-copy-btn');
     }
 
     // Seite: Bricklink Bestelldetail
@@ -187,13 +307,13 @@ Changelog v1.2.0 (2024-06-27)
 
     // Seite: DHL Geschäftskundenportal
     if (window.location.hostname.includes('geschaeftskunden.dhl.de')) {
-        createButton('Bricklink Import', async () => {
+        createButton('Bricklink/Amazon Import', async () => {
             let dataRaw = await getClipboard();
             let data;
             try {
                 data = JSON.parse(dataRaw);
             } catch (e) {
-                alert('Keine gültigen Bricklink-Daten in der Zwischenablage gefunden!');
+                alert('Keine gültigen Versanddaten in der Zwischenablage gefunden!');
                 return;
             }
             // Zuordnung Bricklink → DHL
@@ -291,13 +411,13 @@ Changelog v1.2.0 (2024-06-27)
             alert(`Formularfelder wurden in der Konsole ausgegeben (F12 öffnen).\nGefunden: ${inputs.length} Felder`);
         });
         
-        createButton('Bricklink Import', async () => {
+        createButton('Bricklink/Amazon Import', async () => {
             let dataRaw = await getClipboard();
             let data;
             try {
                 data = JSON.parse(dataRaw);
             } catch (e) {
-                alert('Keine gültigen Bricklink-Daten in der Zwischenablage gefunden!');
+                alert('Keine gültigen Versanddaten in der Zwischenablage gefunden!');
                 return;
             }
             
