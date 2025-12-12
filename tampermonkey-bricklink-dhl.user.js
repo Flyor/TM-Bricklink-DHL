@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.1
+// @version      1.4.2
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
@@ -20,6 +20,13 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.2 (2025-01-XX)
+
+- Bestellnummer-Format angepasst:
+  - Bei Amazon-Bestellungen wird die Bestellnummer OHNE "Order #" Präfix verwendet
+  - Bei Bricklink-Bestellungen wird weiterhin "Order #" vor die Bestellnummer gesetzt
+  - Gilt für DHL und Iloxx
+
 Changelog v1.4.1 (2025-01-XX)
 
 - Amazon-Anpassungen:
@@ -190,6 +197,7 @@ Changelog v1.2.0 (2024-06-27)
             data.country = buyerCountry;
             data.email = buyerEmail;
             data.weight_g = ''; // Amazon liefert kein Gewicht auf der Bestellseite
+            data.source = 'amazon'; // Flag für Amazon-Daten
             
             // In Zwischenablage kopieren (JSON)
             const ok = await setClipboard(JSON.stringify(data));
@@ -299,6 +307,7 @@ Changelog v1.2.0 (2024-06-27)
             // --- Hinweise (z.B. z.Hd. ...) ---
             const infoBlock = Array.from(document.querySelectorAll('td')).find(td => td.innerText.includes('Additional Information'));
             data.info = infoBlock ? infoBlock.nextElementSibling.innerText.trim() : '';
+            data.source = 'bricklink'; // Flag für Bricklink-Daten
             // In Zwischenablage kopieren (JSON)
             const ok = await setClipboard(JSON.stringify(data));
             if (ok) alert('Daten für Versanddienstleister kopiert!');
@@ -335,7 +344,9 @@ Changelog v1.2.0 (2024-06-27)
                     console.warn(`[DHL-Feld] Feld mit id='${id}' nicht gefunden!`);
                 }
             }
-            setValue('shipment-reference', data.orderId ? 'Order #' + data.orderId : '');
+            // Bestellnummer: Bei Amazon ohne "Order #", bei Bricklink mit "Order #"
+            const reference = data.orderId ? (data.source === 'amazon' ? data.orderId : 'Order #' + data.orderId) : '';
+            setValue('shipment-reference', reference);
             setValue('receiver.name1', data.name || '');
             setValue('receiver.name2', data.name2 || data.info || '');
             setValue('receiver.name3', data.name3 || '');
@@ -544,9 +555,10 @@ Changelog v1.2.0 (2024-06-27)
                 setIloxxValue(['#ContentPlaceHolder1_txtEMail', 'name=ctl00$ContentPlaceHolder1$txtEMail'], data.email);
             }
             
-            // Referenz/Bestellnummer (falls vorhanden) - mit "Order #" Präfix
+            // Referenz/Bestellnummer (falls vorhanden) - bei Amazon ohne "Order #", bei Bricklink mit "Order #"
             if (data.orderId) {
-                setIloxxValue(['#ContentPlaceHolder1_txtReference_Parcel1', 'name=ctl00$ContentPlaceHolder1$txtReference_Parcel1'], 'Order #' + data.orderId);
+                const reference = data.source === 'amazon' ? data.orderId : 'Order #' + data.orderId;
+                setIloxxValue(['#ContentPlaceHolder1_txtReference_Parcel1', 'name=ctl00$ContentPlaceHolder1$txtReference_Parcel1'], reference);
             }
             
             // Hinweis: Iloxx benötigt KEIN Gewicht (im Gegensatz zu DHL)
