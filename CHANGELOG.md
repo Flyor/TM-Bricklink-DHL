@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.4.1 (2025-01-XX)
+
+- Amazon-Anpassungen:
+  - Telefonnummer wird nicht mehr aus Amazon kopiert
+  - E-Mail-Adresse bei Amazon-Bestellungen wird auf "Paket@Stonehiller.de" gesetzt
+
+## 1.4.0 (2025-01-XX)
+
+- Amazon Seller Central-Unterstützung hinzugefügt:
+  - Button auf Amazon-Bestellseiten zum Kopieren der Versanddaten
+  - Extrahiert Lieferadresse und Bestellnummer aus Amazon
+  - Kompatibel mit bestehender DHL/Iloxx-Integration
+  - Bestellnummer wird aus URL oder DOM extrahiert
+
+## 1.3.0 (2024-12-08)
+
+- Iloxx-Unterstützung hinzugefügt:
+  - Button auf Iloxx-Versandseite zum Einfügen der Bricklink-Daten
+  - Flexible Feldzuordnung für Iloxx-Formularfelder
+  - Iloxx benötigt KEIN Gewicht (im Gegensatz zu DHL)
+- Kopiervorgang bleibt unverändert (einmal kopieren, mehrfach einfügen möglich)
+
+## 1.2.0 (2024-06-27)
+
+- Gewichtsermittlung komplett überarbeitet:
+  - 35g Verpackungspuffer werden automatisch zum ermittelten Gewicht addiert.
+  - Das Gesamtgewicht wird auf das nächste volle 100g aufgerundet (z.B. 53g+35g=88g → 100g, 224g+35g=259g → 300g).
+  - Umrechnung in kg mit nur einer Nachkommastelle, Komma als Dezimaltrennzeichen (z.B. 0,1 / 0,3 / 1,2).
+  - Mindestgewicht ist immer 0,1 kg, auch bei sehr leichten Sendungen.
+- Adress-Parsing robust gegen beliebige Zeilenzahl im Adressblock (Name2/Name3 werden nur befüllt, wenn wirklich vorhanden).
+- Alle Felder werden gezielt und kompatibel für das DHL Geschäftskundenportal ausgefüllt.
+- Debug-Logging für die wichtigsten Schritte und Fehlerquellen.
+- Das Skript ist damit für alle gängigen Bricklink-Bestellseiten und DHL-Formate (Stand 2024-06) optimiert.
+
 ## 1.0.1 (2024-06-27)
 
 - Clipboard-Handling überarbeitet: Das Skript nutzt jetzt zuerst die Tampermonkey-APIs (GM_setClipboard/GM_getClipboard), fällt aber automatisch auf navigator.clipboard.writeText/readText zurück, falls diese nicht verfügbar sind.
@@ -65,4 +99,4 @@
 
 ---
 
-**Letzte Änderung:** 2024-06-27 
+**Letzte Änderung:** 2025-01-XX 
