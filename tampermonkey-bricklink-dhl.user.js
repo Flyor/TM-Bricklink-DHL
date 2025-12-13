@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.2
+// @version      1.4.3
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
@@ -20,6 +20,13 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.3 (2025-01-XX)
+
+- Amazon Adress-Parsing verbessert:
+  - PLZ und Stadt werden jetzt korrekt erkannt, auch wenn sie in einer Zeile stehen (z.B. "12345 Berlin")
+  - Land wird korrekt erkannt und nicht mehr fälschlicherweise als Stadt verwendet
+  - Parsing geht rückwärts durch die Adresszeilen für bessere Erkennung
+
 Changelog v1.4.2 (2025-01-XX)
 
 - Bestellnummer-Format angepasst:
