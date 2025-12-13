@@ -156,19 +156,39 @@ Changelog v1.2.0 (2024-06-27)
                         }
                     }
                     
-                    if (lines.length > 2) {
-                        // PLZ (dritte Zeile) - sollte nur Zahlen enthalten
-                        buyerPlz = lines[2].replace(/\D/g, '').trim();
-                    }
-                    
-                    if (lines.length > 3) {
-                        // Stadt (vierte Zeile, kann Komma enthalten)
-                        buyerCity = lines[3].replace(/,/g, '').trim();
-                    }
-                    
-                    if (lines.length > 4) {
-                        // Land (fünfte Zeile)
-                        buyerCountry = lines[4].trim();
+                    // Suche nach PLZ und Stadt (können in einer Zeile sein: "12345 Berlin" oder getrennt)
+                    // Gehe die Zeilen von hinten nach vorne durch, um Land, PLZ/Stadt zu finden
+                    for (let i = lines.length - 1; i >= 2; i--) {
+                        const line = lines[i].trim();
+                        
+                        // Prüfe ob es ein Land ist (häufige Länder)
+                        if (line.match(/^(Deutschland|Germany|Österreich|Austria|Schweiz|Switzerland|Frankreich|France|Italien|Italy|Spanien|Spain|Niederlande|Netherlands|Belgien|Belgium|Polen|Poland)$/i)) {
+                            if (!buyerCountry) buyerCountry = line;
+                            continue;
+                        }
+                        
+                        // Prüfe ob PLZ und Stadt in einer Zeile sind (z.B. "12345 Berlin" oder "12345, Berlin")
+                        const plzCityMatch = line.match(/^(\d{4,5})[\s,]+(.+)$/);
+                        if (plzCityMatch && !buyerPlz && !buyerCity) {
+                            buyerPlz = plzCityMatch[1];
+                            buyerCity = plzCityMatch[2].replace(/,/g, '').trim();
+                            continue;
+                        }
+                        
+                        // Prüfe ob nur PLZ (nur Zahlen, 4-5 Ziffern)
+                        if (line.match(/^\d{4,5}$/) && !buyerPlz) {
+                            buyerPlz = line;
+                            // Nächste Zeile sollte die Stadt sein
+                            if (i + 1 < lines.length && !buyerCity) {
+                                buyerCity = lines[i + 1].replace(/,/g, '').trim();
+                            }
+                            continue;
+                        }
+                        
+                        // Prüfe ob nur Stadt (Text ohne Zahlen am Anfang, nicht "Deutschland")
+                        if (!line.match(/^\d/) && !line.match(/^(Deutschland|Germany|Österreich|Austria|Schweiz|Switzerland|Frankreich|France|Italien|Italy|Spanien|Spain|Niederlande|Netherlands|Belgien|Belgium|Polen|Poland)$/i) && !buyerCity) {
+                            buyerCity = line.replace(/,/g, '').trim();
+                        }
                     }
                 }
                 
