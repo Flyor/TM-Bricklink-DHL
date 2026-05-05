@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.6
+// @version      1.4.7
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
@@ -22,6 +22,12 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.7 (2026-05-05)
+
+- eBay-Button-Position angepasst:
+  - Der Copy-Button wird auf eBay deutlich weiter nach unten verschoben
+  - Abstand wird dynamisch als 5x Button-Hoehe berechnet
+
 Changelog v1.4.6 (2026-05-05)
 
 - Cache-Busting Release:
@@ -255,7 +261,7 @@ Changelog v1.2.0 (2024-06-27)
 
     // Seite: eBay Bestelldetail
     if (window.location.hostname.includes('ebay.') && (window.location.pathname.includes('/mesh/ord/details') || window.location.pathname.includes('/sh/ord'))) {
-        createButton('Daten für Label kopieren', async () => {
+        const ebayButton = createButton('Daten für Label kopieren', async () => {
             const data = {};
             const scriptText = Array.from(document.querySelectorAll('script'))
                 .map(s => s.textContent || '')
@@ -318,6 +324,10 @@ Changelog v1.2.0 (2024-06-27)
             const ok = await setClipboard(JSON.stringify(data));
             if (ok) alert('eBay-Daten für Versanddienstleister kopiert!');
         }, 'ebay-copy-btn');
+        requestAnimationFrame(() => {
+            const h = ebayButton.offsetHeight || 40;
+            ebayButton.style.top = `${10 + (h * 5)}px`;
+        });
     }
 
     // Seite: Bricklink Bestelldetail
