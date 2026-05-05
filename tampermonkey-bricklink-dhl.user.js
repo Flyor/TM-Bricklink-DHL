@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.11
-// @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
+// @version      1.4.12
+// @description  Extrahiert Versanddaten aus Bricklink-Bestellungen, Amazon Seller Central und eBay und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
 // @match        https://sellercentral.amazon.de/orders-v3/order/*
@@ -22,6 +22,11 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.12 (2026-05-05)
+
+- Metadaten aktualisiert:
+  - @description nennt jetzt Bricklink, Amazon und eBay als Datenquellen
+
 Changelog v1.4.11 (2026-05-05)
 
 - eBay Telefon-Parsing gefixt:
