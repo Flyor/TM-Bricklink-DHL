@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.7
+// @version      1.4.8
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
@@ -22,6 +22,12 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.8 (2026-05-05)
+
+- eBay Telefon uebernommen und Iloxx-Mapping erweitert:
+  - Telefonnummer wird aus eBay-Adressdaten extrahiert
+  - Telefonnummer wird beim Iloxx-Import in passende Telefonfelder eingefuegt
+
 Changelog v1.4.7 (2026-05-05)
 
 - eBay-Button-Position angepasst:
@@ -291,6 +297,21 @@ Changelog v1.2.0 (2024-06-27)
                 return textHit ? textHit[0] : '';
             }
 
+            function extractPhone() {
+                const domCandidates = Array.from(document.querySelectorAll('dd.info-value, span, div, a'));
+                const domHit = domCandidates
+                    .map(el => (el.textContent || '').replace(/\s+/g, ' ').trim())
+                    .find(v => /^\+?\d[\d\s\-()/]{5,}$/.test(v));
+                if (domHit) return domHit;
+                const addressBlockMatch = scriptText.match(/"copyAddress"\s*:\s*\{[\s\S]*?"text"\s*:\s*"([^"]+)"/);
+                if (addressBlockMatch) {
+                    const decoded = addressBlockMatch[1].replace(/\\n/g, '\n');
+                    const line = decoded.split('\n').map(s => s.trim()).find(v => /^\+?\d[\d\s\-()/]{5,}$/.test(v));
+                    if (line) return line;
+                }
+                return '';
+            }
+
             // --- Order ID ---
             const orderIdMatch = scriptText.match(/"orderId"\s*:\s*"([^"]+)"/);
             if (orderIdMatch) {
@@ -308,6 +329,7 @@ Changelog v1.2.0 (2024-06-27)
             const buyerCountry = extractFromTemplate('COPY_COUNTRY');
             const streetParts = parseStreet(streetLine);
             const buyerEmail = extractEmail();
+            const buyerPhone = extractPhone();
 
             data.name = buyerName;
             data.name2 = '';
@@ -318,6 +340,7 @@ Changelog v1.2.0 (2024-06-27)
             data.city = buyerCity;
             data.country = buyerCountry;
             data.email = buyerEmail;
+            data.phone = buyerPhone;
             data.weight_g = '';
             data.source = 'ebay';
 
@@ -678,6 +701,22 @@ Changelog v1.2.0 (2024-06-27)
             // E-Mail (falls vorhanden)
             if (data.email) {
                 setIloxxValue(['#ContentPlaceHolder1_txtEMail', 'name=ctl00$ContentPlaceHolder1$txtEMail'], data.email);
+            }
+
+            // Telefon (falls vorhanden)
+            if (data.phone) {
+                setIloxxValue([
+                    '#ContentPlaceHolder1_txtPhone',
+                    'name=ctl00$ContentPlaceHolder1$txtPhone',
+                    '#ContentPlaceHolder1_txtPhoneNo',
+                    'name=ctl00$ContentPlaceHolder1$txtPhoneNo',
+                    'input[name*="phone"]',
+                    'input[name*="tel"]',
+                    'input[name*="mobile"]',
+                    'label=Telefon',
+                    'label=Telefonnummer',
+                    'label=Mobil'
+                ], data.phone);
             }
             
             // Referenz/Bestellnummer (falls vorhanden) - bei Amazon/eBay ohne "Order #", bei Bricklink mit "Order #"
