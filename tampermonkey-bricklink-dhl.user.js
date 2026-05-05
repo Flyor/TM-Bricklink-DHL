@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.4
+// @version      1.4.5
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
 // @match        https://sellercentral.amazon.de/orders-v3/order/*
 // @match        https://sellercentral.amazon.*/orders-v3/order/*
-// @match        https://www.ebay.*/mesh/ord/details*
-// @match        https://www.ebay.*/sh/ord/*
+// @match        https://www.ebay.de/mesh/ord/details*
+// @match        https://www.ebay.de/sh/ord/*
 // @match        https://geschaeftskunden.dhl.de/vls/vc/ShipmentDetails*
 // @match        https://geschaeftskunden.dhl.de/vls/vc/printByToken/SHIPMENT_LABEL*
 // @match        https://www.iloxx.de/sendnow/ppvmanualorder.aspx*
@@ -22,6 +22,12 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.5 (2026-05-05)
+
+- eBay URL-Matching fuer Tampermonkey korrigiert:
+  - Konkrete @match-Regeln fuer ebay.de gesetzt, damit das Skript auf
+    Bestelldetail-URLs wie /mesh/ord/details?mode=SH... sicher aktiviert wird
+
 Changelog v1.4.4 (2026-05-05)
 
 - eBay-Unterstuetzung hinzugefuegt:
