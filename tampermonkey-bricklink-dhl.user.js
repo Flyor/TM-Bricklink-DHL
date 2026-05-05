@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.5
+// @version      1.4.6
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
@@ -22,6 +22,12 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.6 (2026-05-05)
+
+- Cache-Busting Release:
+  - Version erhoeht, damit Tampermonkey das Update eindeutig erkennt
+  - Keine Funktionsaenderung gegenueber v1.4.5
+
 Changelog v1.4.5 (2026-05-05)
 
 - eBay URL-Matching fuer Tampermonkey korrigiert:
