@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.10
+// @version      1.4.11
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
@@ -22,6 +22,13 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.11 (2026-05-05)
+
+- eBay Telefon-Parsing gefixt:
+  - Telefonnummer wird zuerst gezielt aus phone.value.text gelesen
+  - Fallback auf copyAddress bleibt erhalten, aber mit strikter Telefonnummer-Pruefung
+  - Verhindert, dass Listing-IDs als Telefonnummer erkannt werden
+
 Changelog v1.4.10 (2026-05-05)
 
 - Cache-Busting Release fuer Tampermonkey:
@@ -309,11 +316,19 @@ Changelog v1.2.0 (2024-06-27)
             }
 
             function extractPhone() {
+                const phoneBlockMatch = scriptText.match(/"phone"\s*:\s*\{[\s\S]*?"value"\s*:\s*\{[\s\S]*?"text"\s*:\s*"([^"]+)"/);
+                if (phoneBlockMatch) {
+                    const candidate = phoneBlockMatch[1].replace(/\\u002B/g, '+').replace(/\s+/g, ' ').trim();
+                    if (/^\+?\d[\d\s\-()/]{7,}$/.test(candidate)) return candidate;
+                }
+
                 const addressBlockMatch = scriptText.match(/"copyAddress"\s*:\s*\{[\s\S]*?"text"\s*:\s*"([^"]+)"/);
                 if (addressBlockMatch) {
-                    const decoded = addressBlockMatch[1].replace(/\\n/g, '\n');
+                    const decoded = addressBlockMatch[1]
+                        .replace(/\\u002B/g, '+')
+                        .replace(/\\n/g, '\n');
                     const lines = decoded.split('\n').map(s => s.trim()).filter(Boolean);
-                    const line = lines.find(v => /^\+?\d[\d\s\-()/]{7,}$/.test(v));
+                    const line = lines.find(v => /^\+?\d[\d\s\-()/]{7,}$/.test(v) && /[+\s()\-]/.test(v));
                     if (line) return line;
                 }
                 const dtNodes = Array.from(document.querySelectorAll('dt'));
