@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.3
+// @version      1.4.4
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
 // @match        https://sellercentral.amazon.de/orders-v3/order/*
 // @match        https://sellercentral.amazon.*/orders-v3/order/*
+// @match        https://www.ebay.*/mesh/ord/details*
+// @match        https://www.ebay.*/sh/ord/*
 // @match        https://geschaeftskunden.dhl.de/vls/vc/ShipmentDetails*
 // @match        https://geschaeftskunden.dhl.de/vls/vc/printByToken/SHIPMENT_LABEL*
 // @match        https://www.iloxx.de/sendnow/ppvmanualorder.aspx*
@@ -20,6 +22,13 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.4 (2026-05-05)
+
+- eBay-Unterstuetzung hinzugefuegt:
+  - Neuer Copy-Button auf eBay-Bestellseiten
+  - Extrahiert Order-ID, Adresse und E-Mail (members.ebay.com)
+  - eBay-Bestellnummer wird bei DHL/Iloxx ohne "Order #" Praefix uebernommen
+
 Changelog v1.4.3 (2025-01-XX)
 
 - Amazon Adress-Parsing verbessert:
@@ -232,6 +241,73 @@ Changelog v1.2.0 (2024-06-27)
         }, 'amazon-dhl-copy-btn');
     }
 
+    // Seite: eBay Bestelldetail
+    if (window.location.hostname.includes('ebay.') && (window.location.pathname.includes('/mesh/ord/details') || window.location.pathname.includes('/sh/ord'))) {
+        createButton('Daten für Label kopieren', async () => {
+            const data = {};
+            const scriptText = Array.from(document.querySelectorAll('script'))
+                .map(s => s.textContent || '')
+                .join('\n');
+
+            function parseStreet(streetLine) {
+                const line = (streetLine || '').trim();
+                if (!line) return { street: '', streetNumber: '' };
+                const m = line.match(/^(.*?)\s+(\d+[a-zA-Z0-9\s\-/]*)$/);
+                if (!m) return { street: line, streetNumber: '' };
+                return { street: m[1].trim(), streetNumber: m[2].trim() };
+            }
+
+            function extractFromTemplate(templateName) {
+                const re = new RegExp(`"text"\\s*:\\s*"([^"]+)"\\s*,\\s*"template"\\s*:\\s*"${templateName}"`);
+                const m = scriptText.match(re);
+                return m ? m[1].trim() : '';
+            }
+
+            function extractEmail() {
+                const domCandidates = Array.from(document.querySelectorAll('dd.info-value, span, div, a'));
+                const domHit = domCandidates
+                    .map(el => (el.textContent || '').trim())
+                    .find(v => /^[A-Za-z0-9._%+-]+@members\.ebay\.com$/i.test(v));
+                if (domHit) return domHit;
+                const textHit = scriptText.match(/[A-Za-z0-9._%+-]+@members\.ebay\.com/i);
+                return textHit ? textHit[0] : '';
+            }
+
+            // --- Order ID ---
+            const orderIdMatch = scriptText.match(/"orderId"\s*:\s*"([^"]+)"/);
+            if (orderIdMatch) {
+                data.orderId = orderIdMatch[1].trim();
+            } else {
+                const urlOrder = (window.location.href.match(/[?&]orderid=([0-9-]+)/i) || [])[1];
+                data.orderId = urlOrder || '';
+            }
+
+            // --- Lieferadresse ---
+            const buyerName = extractFromTemplate('COPY_NAME');
+            const streetLine = extractFromTemplate('COPY_STREET');
+            const buyerPlz = extractFromTemplate('COPY_POSTAL_CODE');
+            const buyerCity = extractFromTemplate('COPY_CITY');
+            const buyerCountry = extractFromTemplate('COPY_COUNTRY');
+            const streetParts = parseStreet(streetLine);
+            const buyerEmail = extractEmail();
+
+            data.name = buyerName;
+            data.name2 = '';
+            data.name3 = '';
+            data.street = streetParts.street;
+            data.streetNumber = streetParts.streetNumber;
+            data.plz = buyerPlz;
+            data.city = buyerCity;
+            data.country = buyerCountry;
+            data.email = buyerEmail;
+            data.weight_g = '';
+            data.source = 'ebay';
+
+            const ok = await setClipboard(JSON.stringify(data));
+            if (ok) alert('eBay-Daten für Versanddienstleister kopiert!');
+        }, 'ebay-copy-btn');
+    }
+
     // Seite: Bricklink Bestelldetail
     if (window.location.hostname.includes('bricklink.com')) {
         // Button einfügen
@@ -343,7 +419,7 @@ Changelog v1.2.0 (2024-06-27)
 
     // Seite: DHL Geschäftskundenportal
     if (window.location.hostname.includes('geschaeftskunden.dhl.de')) {
-        createButton('Bricklink/Amazon Import', async () => {
+        createButton('Bricklink/Amazon/eBay Import', async () => {
             let dataRaw = await getClipboard();
             let data;
             try {
@@ -371,8 +447,8 @@ Changelog v1.2.0 (2024-06-27)
                     console.warn(`[DHL-Feld] Feld mit id='${id}' nicht gefunden!`);
                 }
             }
-            // Bestellnummer: Bei Amazon ohne "Order #", bei Bricklink mit "Order #"
-            const reference = data.orderId ? (data.source === 'amazon' ? data.orderId : 'Order #' + data.orderId) : '';
+            // Bestellnummer: Bei Amazon/eBay ohne "Order #", bei Bricklink mit "Order #"
+            const reference = data.orderId ? ((data.source === 'amazon' || data.source === 'ebay') ? data.orderId : 'Order #' + data.orderId) : '';
             setValue('shipment-reference', reference);
             setValue('receiver.name1', data.name || '');
             setValue('receiver.name2', data.name2 || data.info || '');
@@ -449,7 +525,7 @@ Changelog v1.2.0 (2024-06-27)
             alert(`Formularfelder wurden in der Konsole ausgegeben (F12 öffnen).\nGefunden: ${inputs.length} Felder`);
         });
         
-        createButton('Bricklink/Amazon Import', async () => {
+        createButton('Bricklink/Amazon/eBay Import', async () => {
             let dataRaw = await getClipboard();
             let data;
             try {
@@ -582,9 +658,9 @@ Changelog v1.2.0 (2024-06-27)
                 setIloxxValue(['#ContentPlaceHolder1_txtEMail', 'name=ctl00$ContentPlaceHolder1$txtEMail'], data.email);
             }
             
-            // Referenz/Bestellnummer (falls vorhanden) - bei Amazon ohne "Order #", bei Bricklink mit "Order #"
+            // Referenz/Bestellnummer (falls vorhanden) - bei Amazon/eBay ohne "Order #", bei Bricklink mit "Order #"
             if (data.orderId) {
-                const reference = data.source === 'amazon' ? data.orderId : 'Order #' + data.orderId;
+                const reference = (data.source === 'amazon' || data.source === 'ebay') ? data.orderId : 'Order #' + data.orderId;
                 setIloxxValue(['#ContentPlaceHolder1_txtReference_Parcel1', 'name=ctl00$ContentPlaceHolder1$txtReference_Parcel1'], reference);
             }
             
