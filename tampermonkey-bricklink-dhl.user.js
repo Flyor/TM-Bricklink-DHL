@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bricklink & Amazon → DHL & Iloxx Versanddienstleister Kopierer
 // @namespace    https://yourdomain.example/
-// @version      1.4.8
+// @version      1.4.9
 // @description  Extrahiert Versanddaten aus Bricklink-Bestellungen und Amazon Seller Central und fügt sie im DHL Geschäftskundenportal und Iloxx ein. Mit Button, JSON-Clipboard und Feldzuordnung. Gewicht wird automatisch umgerechnet. Hinweise werden in Name2 eingetragen. 
 // @author       Dein Name
 // @match        https://www.bricklink.com/orderDetail.asp*
@@ -22,6 +22,12 @@
 // ==/UserScript==
 
 /*
+Changelog v1.4.9 (2026-05-05)
+
+- eBay Telefon-Extraktion praezisiert:
+  - Telefonnummer wird jetzt bevorzugt aus copyAddress gelesen
+  - Verhindert Fehlgriffe auf PLZ/IDs aus anderen Seitenelementen
+
 Changelog v1.4.8 (2026-05-05)
 
 - eBay Telefon uebernommen und Iloxx-Mapping erweitert:
@@ -298,16 +304,20 @@ Changelog v1.2.0 (2024-06-27)
             }
 
             function extractPhone() {
-                const domCandidates = Array.from(document.querySelectorAll('dd.info-value, span, div, a'));
-                const domHit = domCandidates
-                    .map(el => (el.textContent || '').replace(/\s+/g, ' ').trim())
-                    .find(v => /^\+?\d[\d\s\-()/]{5,}$/.test(v));
-                if (domHit) return domHit;
                 const addressBlockMatch = scriptText.match(/"copyAddress"\s*:\s*\{[\s\S]*?"text"\s*:\s*"([^"]+)"/);
                 if (addressBlockMatch) {
                     const decoded = addressBlockMatch[1].replace(/\\n/g, '\n');
-                    const line = decoded.split('\n').map(s => s.trim()).find(v => /^\+?\d[\d\s\-()/]{5,}$/.test(v));
+                    const lines = decoded.split('\n').map(s => s.trim()).filter(Boolean);
+                    const line = lines.find(v => /^\+?\d[\d\s\-()/]{7,}$/.test(v));
                     if (line) return line;
+                }
+                const dtNodes = Array.from(document.querySelectorAll('dt'));
+                for (const dt of dtNodes) {
+                    const label = (dt.textContent || '').toLowerCase();
+                    if (!label.includes('telefon') && !label.includes('phone') && !label.includes('mobil')) continue;
+                    const dd = dt.nextElementSibling;
+                    const value = dd ? (dd.textContent || '').replace(/\s+/g, ' ').trim() : '';
+                    if (/^\+?\d[\d\s\-()/]{7,}$/.test(value)) return value;
                 }
                 return '';
             }
